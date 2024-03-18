@@ -1,0 +1,101 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Customer: Toolcraft
+'Start Date: 11/17/2020
+'Project number: 6179
+
+'This is a simple project that will run off the pre-save hook of the new shipment screen
+'The project will verify that the lines getting shipped have a due date that is not in the past
+'If it is in the past, it will display a warning. The user can then confirm if they want to ship the line or if they want to cancel.
+
+F.Intrinsic.Control.Try
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+F.Intrinsic.Control.Case(28530)
+	
+	F.Intrinsic.Control.CallSub(CheckDueDates)
+	
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.Catch
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.CheckDueDates.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare(String, "")
+V.Local.sRowContent.Declare(String, "")
+V.Local.sMessage.Declare(String, "")
+V.Local.iRows.Declare(Long, 0)
+V.Local.iLoop.Declare(Long, 0)
+V.Local.dLineDate.Declare(Date, "01/01/1900")
+
+F.Intrinsic.BDF.Load("AUX001", "AUX001")
+
+F.Intrinsic.BDF.ReadRowCount("AUX001", V.Local.iRows)
+F.Intrinsic.Math.Add(V.Local.iRows, -1, V.Local.iRows)
+
+'We are going to loop through the entire BDF. On any lines that have a ship
+F.Intrinsic.Control.For(V.Local.iLoop, 0, V.Local.iRows, 1)
+	
+	F.Intrinsic.BDF.ReadRow("AUX001", V.Local.iLoop, V.Local.sRowContent)
+	F.Intrinsic.String.Split(V.Local.sRowContent, "|~|", V.Local.sRowContent)
+	'Values in the line we care about: Position 0 = Order number, Position 1 = order line, position 3 = shipped quantity, position 13 = promised date
+	'Thought process, per line we verify the quantity shipped is more than zero, if so, we check the promised date against the current date. If so, we record the line for the 'error' message
+	F.Intrinsic.Control.If(V.Local.sRowContent(3).Long, >, 0)
+		'Check the due date
+		F.Intrinsic.Date.ConvertDString(V.Local.sRowContent(13).Trim, "YYYYMMDD", V.Local.dLineDate)
+		F.Intrinsic.Control.If(V.Local.dLineDate, <, V.Ambient.Date)
+			'We record the order and line into the message string
+			F.Intrinsic.String.Build("{0}*!*{1}", V.Local.sMessage, V.Local.sRowContent(1).Trim, V.Local.sMessage)
+		F.Intrinsic.Control.EndIf
+		
+	F.Intrinsic.Control.EndIf
+	
+F.Intrinsic.Control.Next(V.Local.iLoop)
+
+'Check to see if anything was recording in the V.Local.sMessage
+F.Intrinsic.Control.If(V.Local.sMessage.Trim, <>, "")
+	F.Intrinsic.Control.CallSub(Message, "MESSAGE", V.Local.sMessage)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.Catch
+F.Intrinsic.Control.EndTry
+Program.Sub.CheckDueDates.End
+
+Program.Sub.Message.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare(String, "")
+V.Local.sTemp.Declare(String, "")
+V.Local.sMessage.Declare(String, "")
+V.Local.sIncoming.Declare(String, "")
+V.Local.iAnswer.Declare(Long, 0)
+
+F.Intrinsic.String.Split(V.Args.MESSAGE, "*!*", V.Local.sIncoming)
+
+F.Intrinsic.Control.If(V.Local.sIncoming.UBound, >, 1)
+	V.Local.sTemp.Set("lines have due dates")
+F.Intrinsic.Control.Else
+	V.Local.sTemp.Set("line has a due date")
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Variable.PopArray(V.Local.sIncoming, V.Local.sIncoming)
+F.Intrinsic.String.Join(V.Local.sIncoming, ", ", V.Local.sMessage)
+
+F.Intrinsic.String.Build("The following {0} in the past:{1}{1}{2}{1}{1}Would you like to continue?", V.Local.sTemp, V.Ambient.NewLine, V.Local.sMessage, V.Local.sMessage)
+
+F.Intrinsic.UI.Msgbox(V.Local.sMessage, "ORDER LINES PAST DUE", 4, V.Local.iAnswer)
+
+'Response of YES will be a 6
+F.Intrinsic.Control.If(V.Local.iAnswer, <>, 6)
+	V.Passed.777777.Set(1)
+'	F.Intrinsic.UI.Msgbox("Shipment was not made")
+F.Intrinsic.Control.Else
+	V.Passed.777777.Set(0)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.Catch
+F.Intrinsic.Control.EndTry
+Program.Sub.Message.End
